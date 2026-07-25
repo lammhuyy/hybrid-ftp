@@ -16,3 +16,32 @@ PERM_BITS = [
     stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP,
     stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH,
 ]
+
+def format_mode(mode):
+    type_char = FILE_MODE_MAP.get(stat.S_IFMT(mode), "?")
+    perms = ""
+    for i, bit in enumerate(PERM_BITS):
+        if mode & bit:
+            perms += PERM_CHARS[i]
+        else:
+            perms += "-"
+    return type_char + perms
+
+
+def list_dir(abs_path):
+    entries = []
+    try:
+        names = sorted(os.listdir(abs_path))
+    except PermissionError:
+        return None
+    for name in names:
+        full = os.path.join(abs_path, name)
+        try:
+            st = os.stat(full)
+            mode_str = format_mode(st.st_mode)
+            size = st.st_size
+            mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
+            entries.append(f"{mode_str} 1 owner {size:>8} {mtime} {name}")
+        except OSError:
+            entries.append(f"?????????? 1 owner ????????? ???? {name}")
+    return entries
