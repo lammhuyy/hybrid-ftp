@@ -132,6 +132,55 @@ def main():
                             except Exception:
                                 pass
                             client._reset_data()
+                elif cmd == "STOU":
+                    if not arg:
+                        print("  Usage: STOU <local_file>")
+                        continue
+                    if not os.path.exists(arg):
+                        print(f"  Local file not found: {arg}")
+                        continue
+                    resp = client.send_raw("STOU")
+                    print(resp)
+                    if resp.startswith("150"):
+                        rdt = client._setup_data_channel(True)
+                        if rdt is None:
+                            continue
+                        try:
+                            rdt.send(read_file_chunks(arg))
+                            resp2 = client._read_reply()
+                            print(resp2)
+                        finally:
+                            try:
+                                rdt.close()
+                            except Exception:
+                                pass
+                            client._reset_data()
+                elif cmd == "APPE":
+                    parts = arg.split(None, 1)
+                    remote = parts[0] if parts else ""
+                    if not remote:
+                        print("  Usage: APPE <remote_file> <local_file>")
+                        continue
+                    local = parts[1] if len(parts) > 1 else remote
+                    if not os.path.exists(local):
+                        print(f"  Local file not found: {local}")
+                        continue
+                    resp = client.send_raw(f"APPE {remote}")
+                    print(resp)
+                    if resp.startswith("150"):
+                        rdt = client._setup_data_channel(True)
+                        if rdt is None:
+                            continue
+                        try:
+                            rdt.send(read_file_chunks(local))
+                            resp2 = client._read_reply()
+                            print(resp2)
+                        finally:
+                            try:
+                                rdt.close()
+                            except Exception:
+                                pass
+                            client._reset_data()
                 elif cmd == "LIST":
                     client.list(arg)
                 elif cmd == "NLST":

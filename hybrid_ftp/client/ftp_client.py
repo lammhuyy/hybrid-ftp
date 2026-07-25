@@ -146,6 +146,60 @@ class FTPClient:
                 pass
             self._reset_data()
 
+    def retr(self, remote_path, local_path=None):
+        if local_path is None:
+            local_path = os.path.basename(remote_path)
+        send_line(self.control, f"RETR {remote_path}")
+        resp = self._read_reply()
+        print(resp)
+        if not resp.startswith("150"):
+            return False
+        rdt = self._setup_data_channel(is_sender=False)
+        if rdt is None:
+            return False
+        try:
+            data = rdt.recv()
+            with open(local_path, "wb") as f:
+                f.write(data)
+            resp2 = self._read_reply()
+            print(resp2)
+            print(f"  Downloaded {len(data)} bytes to {local_path}")
+            return True
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            self._reset_data()
+
+    def stor(self, local_path, remote_path=None):
+        if remote_path is None:
+            remote_path = os.path.basename(local_path)
+        if not os.path.exists(local_path):
+            print(f"  Local file not found: {local_path}")
+            return False
+        send_line(self.control, f"STOR {remote_path}")
+        resp = self._read_reply()
+        print(resp)
+        if not resp.startswith("150"):
+            return False
+        rdt = self._setup_data_channel(is_sender=True)
+        if rdt is None:
+            return False
+        try:
+            rdt.send(read_file_chunks(local_path))
+            resp2 = self._read_reply()
+            print(resp2)
+            print(f"  Uploaded {local_path} to {remote_path}")
+            return True
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            self._reset_data()
+
+
     def list(self, path=""):
         if path:
             send_line(self.control, f"LIST {path}")

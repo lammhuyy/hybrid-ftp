@@ -74,3 +74,85 @@ class ClientHandler(threading.Thread):
 
     def cmd_NOOP(self, arg):
         send_reply(self.session.conn, 200)
+
+    def cmd_PORT(self, arg):
+        try:
+            ip, port = parse_port(arg)
+        except (ValueError, IndexError):
+            send_reply(self.session.conn, 501)
+            return
+        dcs.open_active(self.session, ip, port)
+        send_reply(self.session.conn, 200)
+
+    def cmd_PASV(self, arg):
+        addr = dcs.open_passive(self.session)
+        h1, h2, h3, h4 = addr[0].split(".")
+        p1, p2 = addr[1] >> 8, addr[1] & 0xFF
+        reply = REPLIES[227].format(h1=h1, h2=h2, h3=h3, h4=h4, p1=p1, p2=p2)
+        self.session.conn.sendall(reply.encode())
+
+    def cmd_RETR(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if not vfs.is_file(abs_path):
+                send_reply(self.session.conn, 550, "File not found.")
+                return
+            sz = vfs.file_size(abs_path)
+            send_reply(self.session.conn, 150, f"Opening BINARY mode data connection for {arg} ({sz} bytes).")
+            self._do_retr(abs_path)
+            send_reply(self.session.conn, 226)
+        except (PermissionError, OSError) as e:
+            send_reply(self.session.conn, 550, str(e))
+
+    def cmd_STOR(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            send_reply(self.session.conn, 150,
+                       f"Opening BINARY mode data connection for {arg}.")
+            self._do_stor(abs_path)
+            send_reply(self.session.conn, 226)
+        except (PermissionError, OSError) as e:
+            send_reply(self.session.conn, 550, str(e))
+
+    def cmd_STOU(self, arg):
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        try:
+            abs_dir = self.session.abs_path("")
+            full_path, name = vfs.generate_unique_path(abs_dir)
+            send_reply(self.session.conn, 150,
+                       f"Opening BINARY mode data connection for {name}.")
+            self._do_stor(full_path)
+            send_reply(self.session.conn, 226)
+        except OSError as e:
+            send_reply(self.session.conn, 550, str(e))
+
+    def cmd_APPE(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            send_reply(self.session.conn, 150,
+                       f"Opening BINARY mode data connection for {arg}.")
+            self._do_appe(abs_path)
+            send_reply(self.session.conn, 226)
+        except (PermissionError, OSError) as e:
+            send_reply(self.session.conn, 550, str(e))
+
