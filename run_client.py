@@ -132,18 +132,6 @@ def main():
                             except Exception:
                                 pass
                             client._reset_data()
-                elif cmd == "TYPE":
-                    if arg.upper() not in ("A", "I"):
-                        print("  Usage: TYPE {A|I}")
-                        continue
-                    resp = client.send_raw(f"TYPE {arg.upper()}")
-                    print(resp)
-                elif cmd == "MODE":
-                    if arg.upper() not in ("S", "B", "C"):
-                        print("  Usage: MODE {S|B|C}")
-                        continue
-                    resp = client.send_raw(f"MODE {arg.upper()}")
-                    print(resp)
                 elif cmd == "LIST":
                     client.list(arg)
                 elif cmd == "NLST":
