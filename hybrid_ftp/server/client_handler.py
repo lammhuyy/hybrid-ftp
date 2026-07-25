@@ -75,6 +75,22 @@ class ClientHandler(threading.Thread):
     def cmd_NOOP(self, arg):
         send_reply(self.session.conn, 200)
 
+    def cmd_TYPE(self, arg):
+        if arg.upper() in ("A", "I"):
+            self.session.type = arg.upper()
+            send_reply(self.session.conn, 200)
+        else:
+            send_reply(self.session.conn, 504)
+
+    def cmd_MODE(self, arg):
+        if arg.upper() == "S":
+            send_reply(self.session.conn, 200)
+        elif arg.upper() in ("B", "C"):
+            send_reply(self.session.conn, 202)
+        else:
+            send_reply(self.session.conn, 504)
+
+
     def cmd_PORT(self, arg):
         try:
             ip, port = parse_port(arg)
