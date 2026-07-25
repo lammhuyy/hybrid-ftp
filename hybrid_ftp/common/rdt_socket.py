@@ -215,6 +215,67 @@ class _Sender:
         return True
 
 
+class _Receiver:
+    def __init__(self, sock, addr):
+        self.sock = sock
+        self.addr = addr
+        self.expected_base = 1
+        self.ooo_buffer = {}
+        self.buf_size = MAX_WINDOW
 
-class _Receiver():
-    pass
+    def recv_all(self):
+        self.sock.settimeout(TRANSFER_IDLE_TIMEOUT_S)
+        result_parts = {}
+        fin_received = False
+
+        while True:
+            try:
+                data, _ = self.sock.recvfrom(4096)
+            except socket.timeout:
+                if result_parts:
+                    raise TimeoutError("Receive timed out: incomplete data")
+                raise TimeoutError("Receive timed out: no data from sender")
+            try:
+                hdr = parse_packet(data)
+            except ValueError:
+                continue
+
+            if has_flag(hdr["flags"], FLAG_FIN):
+                if not fin_received:
+                    ack_fin = build_packet(seq_num=0, ack_num=hdr["seq_num"], flags=FLAG_FIN | FLAG_ACK, window=MAX_WINDOW)
+                    self.sock.sendto(ack_fin, self.addr)
+                fin_received = True
+                break
+
+            if not has_flag(hdr["flags"], FLAG_DATA):
+                continue
+
+            seq = hdr["seq_num"]
+            payload = hdr["payload"]
+
+            if seq < self.expected_base:
+                self._send_ack(seq)
+                continue
+
+            if seq in result_parts or seq in self.ooo_buffer:
+                self._send_ack(seq)
+                continue
+
+            if seq == self.expected_base:
+                result_parts[seq] = payload
+                self.expected_base += 1
+                while self.expected_base in self.ooo_buffer:
+                    result_parts[self.expected_base] = self.ooo_buffer.pop(self.expected_base)
+                    self.expected_base += 1
+                self._send_ack(seq)
+            elif seq < self.expected_base + self.buf_size:
+                self.ooo_buffer[seq] = payload
+                self._send_ack(seq)
+
+        sorted_seqs = sorted(result_parts.keys())
+        return b"".join(result_parts[s] for s in sorted_seqs)
+
+    def _send_ack(self, ack_num):
+        window_avail = self.buf_size - len(self.ooo_buffer)
+        pkt = build_packet(ack_num=ack_num, flags=FLAG_ACK, window=max(window_avail, 1))
+        self.sock.sendto(pkt, self.addr)
