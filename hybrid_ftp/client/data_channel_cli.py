@@ -16,3 +16,9 @@ def open_port_listener(bind_ip="0.0.0.0"):
     rdt.sock.bind((bind_ip, 0))
     addr = rdt.sock.getsockname()
     return rdt, addr
+
+def open_port_listener(bind_ip="0.0.0.0"):
+    rdt = ReliableUDPSocket()
+    rdt.sock.bind((bind_ip, 0))
+    addr = rdt.sock.getsockname()
+    return rdt, addr

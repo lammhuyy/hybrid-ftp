@@ -67,6 +67,32 @@ class FTPClient:
         print(resp)
         return resp.startswith("200")
 
+    def pasv(self):
+        send_line(self.control, "PASV")
+        resp = self._read_reply()
+        print(resp)
+        if resp.startswith("227"):
+            ip, port = parse_pasv_reply(resp)
+            self.data_mode = "PASSIVE"
+            self.pasv_addr = (ip, port)
+            return True
+        return False
+
+    def port(self):
+        rdt, addr = open_port_listener()
+        self.data_socket = rdt
+        self.data_mode = "ACTIVE"
+        local_ip = self.control.getsockname()[0]
+        if local_ip == "0.0.0.0":
+            local_ip = "127.0.0.1"
+        self.port_addr = (local_ip, addr[1])
+        h1, h2, h3, h4 = local_ip.split(".")
+        p1, p2 = addr[1] >> 8, addr[1] & 0xFF
+        send_line(self.control, f"PORT {format_port(h1, h2, h3, h4, p1, p2)}")
+        resp = self._read_reply()
+        print(resp)
+        return resp.startswith("200")
+
     def retr(self, remote_path, local_path=None):
         if local_path is None:
             local_path = os.path.basename(remote_path)
