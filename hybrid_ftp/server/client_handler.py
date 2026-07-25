@@ -169,3 +169,9 @@ class ClientHandler(threading.Thread):
                 send_reply(self.session.conn, 550, "File not found.")
         except (PermissionError, OSError):
             send_reply(self.session.conn, 550, "Cannot access file.")
+
+    def cmd_ABOR(self, arg):
+        send_reply(self.session.conn, 426)
+
+    def cmd_HELP(self, arg):
+        send_reply(self.session.conn, 214)
