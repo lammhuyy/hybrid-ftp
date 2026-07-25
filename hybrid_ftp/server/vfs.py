@@ -45,3 +45,29 @@ def list_dir(abs_path):
         except OSError:
             entries.append(f"?????????? 1 owner ????????? ???? {name}")
     return entries
+
+def list_names(abs_path):
+    try:
+        return sorted(os.listdir(abs_path))
+    except OSError:
+        return None
+
+
+def make_dir(abs_path):
+    os.makedirs(abs_path, exist_ok=True)
+    return True
+
+
+def remove_dir(abs_path):
+    os.rmdir(abs_path)
+    return True
+
+
+def delete_file(abs_path):
+    os.remove(abs_path)
+    return True
+
+
+def rename(abs_from, abs_to):
+    os.rename(abs_from, abs_to)
+    return True
