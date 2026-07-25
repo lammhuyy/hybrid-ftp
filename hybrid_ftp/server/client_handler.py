@@ -75,6 +75,152 @@ class ClientHandler(threading.Thread):
     def cmd_NOOP(self, arg):
         send_reply(self.session.conn, 200)
 
+    def cmd_PWD(self, arg):
+        send_reply(self.session.conn, 257, f'"{self.session.cwd}"')
+
+    def cmd_CWD(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            new_path = self.session.resolve_path(arg)
+            abs_path = self.session.abs_path(new_path)
+            if os.path.isdir(abs_path):
+                self.session.cwd = new_path
+                send_reply(self.session.conn, 250)
+            else:
+                send_reply(self.session.conn, 550, "Not a directory.")
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Path not accessible.")
+
+    def cmd_CDUP(self, arg):
+        self.cmd_CWD("..")
+
+    def cmd_MKD(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            vfs.make_dir(abs_path)
+            send_reply(self.session.conn, 257, f'"{arg}" created.')
+        except OSError:
+            send_reply(self.session.conn, 550, "Cannot create directory.")
+
+    def cmd_RMD(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            vfs.remove_dir(abs_path)
+            send_reply(self.session.conn, 250)
+        except OSError:
+            send_reply(self.session.conn, 550, "Cannot remove directory.")
+
+    def cmd_DELE(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            vfs.delete_file(abs_path)
+            send_reply(self.session.conn, 250)
+        except OSError:
+            send_reply(self.session.conn, 550, "Cannot delete file.")
+
+    def cmd_LIST(self, arg):
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        target = arg if arg else self.session.cwd
+        try:
+            abs_path = self.session.abs_path(target)
+            entries = vfs.list_dir(abs_path)
+            if entries is None:
+                send_reply(self.session.conn, 550, "Cannot list directory.")
+                return
+            data = "\r\n".join(entries).encode()
+            send_reply(self.session.conn, 150, f"Opening BINARY mode data connection for LIST.")
+            self._transfer_data(data)
+            send_reply(self.session.conn, 226)
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot list directory.")
+
+    def cmd_NLST(self, arg):
+        if self.session.data_mode == "NONE":
+            send_reply(self.session.conn, 425)
+            return
+        target = arg if arg else self.session.cwd
+        try:
+            abs_path = self.session.abs_path(target)
+            names = vfs.list_names(abs_path)
+            if names is None:
+                send_reply(self.session.conn, 550, "Cannot list directory.")
+                return
+            data = "\r\n".join(names).encode()
+            send_reply(self.session.conn, 150, f"Opening BINARY mode data connection for NLST.")
+            self._transfer_data(data)
+            send_reply(self.session.conn, 226)
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot list directory.")
+
+    def cmd_STAT(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 211)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if vfs.exists(abs_path):
+                send_reply(self.session.conn, 213, f'"{arg}" exists.')
+            else:
+                send_reply(self.session.conn, 550, "Not found.")
+        except PermissionError:
+            send_reply(self.session.conn, 550, "Permission denied.")
+
+    def cmd_SIZE(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if vfs.is_file(abs_path):
+                sz = vfs.file_size(abs_path)
+                send_reply(self.session.conn, 213, str(sz))
+            else:
+                send_reply(self.session.conn, 550, "Not a file.")
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot access file.")
+
+    def cmd_MDTM(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if vfs.is_file(abs_path):
+                mt = vfs.file_mtime(abs_path)
+                send_reply(self.session.conn, 213, mt)
+            else:
+                send_reply(self.session.conn, 550, "Not a file.")
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot access file.")
+
+    def cmd_TYPE(self, arg):
+        if arg.upper() in ("A", "I"):
+            self.session.type = arg.upper()
+            send_reply(self.session.conn, 200)
+        else:
+            send_reply(self.session.conn, 504)
+
+    def cmd_MODE(self, arg):
+        if arg.upper() == "S":
+            send_reply(self.session.conn, 200)
+        elif arg.upper() in ("B", "C"):
+            send_reply(self.session.conn, 202)
+        else:
+            send_reply(self.session.conn, 504)
+
     def cmd_PORT(self, arg):
         try:
             ip, port = parse_port(arg)
@@ -156,6 +302,36 @@ class ClientHandler(threading.Thread):
         except (PermissionError, OSError) as e:
             send_reply(self.session.conn, 550, str(e))
 
+    def cmd_RNFR(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if vfs.exists(abs_path):
+                self.session.rename_from = abs_path
+                send_reply(self.session.conn, 350)
+            else:
+                send_reply(self.session.conn, 550, "File not found.")
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot access file.")
+
+    def cmd_RNTO(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        if self.session.rename_from is None:
+            send_reply(self.session.conn, 503)
+            return
+        try:
+            abs_to = self.session.abs_path(arg)
+            vfs.rename(self.session.rename_from, abs_to)
+            self.session.rename_from = None
+            send_reply(self.session.conn, 250)
+        except OSError:
+            send_reply(self.session.conn, 550, "Cannot rename.")
+            self.session.rename_from = None
+
     def cmd_HASH(self, arg):
         if not arg:
             send_reply(self.session.conn, 501)
@@ -175,3 +351,151 @@ class ClientHandler(threading.Thread):
 
     def cmd_HELP(self, arg):
         send_reply(self.session.conn, 214)
+
+    def _transfer_data(self, data):
+        rdt = self._setup_data_channel()
+        if rdt is None:
+            return
+        try:
+            chunks = [data[i:i + 1024] for i in range(0, len(data), 1024)]
+            rdt.send(chunks)
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            finally:
+                self.session.data_mode = "NONE"
+                self.session.data_socket = None
+
+    def _do_retr(self, abs_path):
+        rdt = self._setup_data_channel()
+        if rdt is None:
+            return
+        try:
+            def file_chunks():
+                with open(abs_path, "rb") as f:
+                    while True:
+                        chunk = f.read(1024)
+                        if not chunk:
+                            break
+                        yield chunk
+            rdt.send(file_chunks())
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            finally:
+                self.session.data_mode = "NONE"
+                self.session.data_socket = None
+
+    def _do_stor(self, abs_path):
+        rdt = self._setup_data_channel()
+        if rdt is None:
+            return
+        try:
+            data = rdt.recv()
+            with open(abs_path, "wb") as f:
+                f.write(data)
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            finally:
+                self.session.data_mode = "NONE"
+                self.session.data_socket = None
+
+    def _do_appe(self, abs_path):
+        rdt = self._setup_data_channel()
+        if rdt is None:
+            return
+        try:
+            data = rdt.recv()
+            with open(abs_path, "ab") as f:
+                f.write(data)
+        finally:
+            try:
+                rdt.close()
+            except Exception:
+                pass
+            finally:
+                self.session.data_mode = "NONE"
+                self.session.data_socket = None
+
+    def _setup_data_channel(self):
+        rdt = self.session.data_socket
+        if rdt is None:
+            send_reply(self.session.conn, 425)
+            return None
+        try:
+            if self.session.data_mode == "PASSIVE":
+                rdt.accept()
+            elif self.session.data_mode == "ACTIVE":
+                rdt.connect(self.session.peer_addr)
+        except Exception:
+            send_reply(self.session.conn, 425)
+            return None
+        return rdt
+
+    def _cleanup(self):
+        try:
+            self.session.conn.close()
+        except Exception:
+            pass
+
+
+class _SessionWrap:
+    def __init__(self, conn, addr):
+        self.conn = conn
+        self.addr = addr
+        self.client_ip = addr[0]
+        self.server_ip_for_client = conn.getsockname()[0]
+        self.authenticated = False
+        self.pending_user = ""
+        self.username = ""
+        self.root = ""
+        self.cwd = "/"
+        self.type = "A"
+        self.data_mode = "NONE"
+        self.peer_addr = None
+        self.data_socket = None
+        self.rename_from = None
+        self.last_cmd_time = 0
+
+    def update_time(self):
+        self.last_cmd_time = time.time()
+
+    def abs_path(self, rel):
+        from pathlib import Path
+        root = Path(self.root)
+        if rel.startswith("/"):
+            rel_part = rel[1:]
+        elif self.cwd == "/":
+            rel_part = rel
+        else:
+            rel_part = self.cwd.lstrip("/") + "/" + rel
+        full = (root / rel_part).resolve()
+        root_real = root.resolve()
+        if not str(full).startswith(str(root_real)):
+            raise PermissionError("Path traversal denied")
+        return str(full)
+
+    def resolve_path(self, rel):
+        if rel.startswith("/"):
+            parts = rel[1:].split("/")
+        elif self.cwd == "/":
+            parts = rel.split("/")
+        else:
+            parts = (self.cwd.lstrip("/") + "/" + rel).split("/")
+        result = []
+        for p in parts:
+            if p == "..":
+                if result:
+                    result.pop()
+            elif p == "." or p == "":
+                continue
+            else:
+                result.append(p)
+        return "/" + "/".join(result)
