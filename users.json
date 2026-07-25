@@ -1,0 +1,12 @@
+{
+  "alice": {
+    "salt": "abc123",
+    "hash": "30766ca856b5f4a7b7dce62af77fef1a68d70dd4f9c3d43e60c8fc44261548e8",
+    "root": "storage\\alice"
+  },
+  "bob": {
+    "salt": "def456",
+    "hash": "64fb94997cd9578729f0a0b378c14e3b15038ceb0c2bb0f128143f19b221ab57",
+    "root": "storage\\bob"
+  }
+}
