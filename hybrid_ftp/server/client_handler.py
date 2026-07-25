@@ -75,22 +75,6 @@ class ClientHandler(threading.Thread):
     def cmd_NOOP(self, arg):
         send_reply(self.session.conn, 200)
 
-    def cmd_TYPE(self, arg):
-        if arg.upper() in ("A", "I"):
-            self.session.type = arg.upper()
-            send_reply(self.session.conn, 200)
-        else:
-            send_reply(self.session.conn, 504)
-
-    def cmd_MODE(self, arg):
-        if arg.upper() == "S":
-            send_reply(self.session.conn, 200)
-        elif arg.upper() in ("B", "C"):
-            send_reply(self.session.conn, 202)
-        else:
-            send_reply(self.session.conn, 504)
-
-
     def cmd_PORT(self, arg):
         try:
             ip, port = parse_port(arg)
@@ -172,3 +156,16 @@ class ClientHandler(threading.Thread):
         except (PermissionError, OSError) as e:
             send_reply(self.session.conn, 550, str(e))
 
+    def cmd_HASH(self, arg):
+        if not arg:
+            send_reply(self.session.conn, 501)
+            return
+        try:
+            abs_path = self.session.abs_path(arg)
+            if vfs.is_file(abs_path):
+                digest = sha256_file(abs_path)
+                send_reply(self.session.conn, 213, digest)
+            else:
+                send_reply(self.session.conn, 550, "File not found.")
+        except (PermissionError, OSError):
+            send_reply(self.session.conn, 550, "Cannot access file.")

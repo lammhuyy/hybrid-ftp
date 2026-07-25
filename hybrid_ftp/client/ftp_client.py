@@ -169,3 +169,11 @@ class FTPClient:
             except Exception:
                 pass
             self._reset_data()
+
+    def hash(self, path):
+        send_line(self.control, f"HASH {path}")
+        resp = self._read_reply()
+        print(resp)
+        if resp.startswith("213"):
+            return resp[4:].strip()
+        return None
