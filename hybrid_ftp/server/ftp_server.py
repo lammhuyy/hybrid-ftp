@@ -32,6 +32,3 @@ class FTPServer:
         self.running = False
 
 
-def run_server(host="0.0.0.0", port=TCP_PORT):
-    server = FTPServer(host, port)
-    server.start()
