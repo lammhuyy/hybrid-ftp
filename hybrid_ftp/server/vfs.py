@@ -71,3 +71,32 @@ def delete_file(abs_path):
 def rename(abs_from, abs_to):
     os.rename(abs_from, abs_to)
     return True
+
+def file_size(abs_path):
+    return os.path.getsize(abs_path)
+
+
+def file_mtime(abs_path):
+    return time.strftime("%Y%m%d%H%M%S", time.localtime(os.path.getmtime(abs_path)))
+
+
+def exists(abs_path):
+    return os.path.exists(abs_path)
+
+
+def is_dir(abs_path):
+    return os.path.isdir(abs_path)
+
+
+def is_file(abs_path):
+    return os.path.isfile(abs_path)
+
+def generate_unique_path(abs_dir):
+    import random
+    while True:
+        ts = time.strftime("%Y%m%d%H%M%S")
+        suffix = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=6))
+        name = f"file_{ts}_{suffix}"
+        full = os.path.join(abs_dir, name)
+        if not os.path.exists(full):
+            return full, name
