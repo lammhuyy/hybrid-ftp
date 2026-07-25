@@ -22,12 +22,3 @@ def open_active(session, ip, port):
     session.data_mode = "ACTIVE"
     session.peer_addr = peer
     return rdt_sock
-
-def open_active(session, ip, port):
-    rdt_sock = ReliableUDPSocket()
-    rdt_sock.bind(("0.0.0.0", 0))
-    peer = (ip, port)
-    session.data_socket = rdt_sock
-    session.data_mode = "ACTIVE"
-    session.peer_addr = peer
-    return rdt_sock

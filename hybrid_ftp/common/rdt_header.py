@@ -23,36 +23,6 @@ def unpack_header(data):
         "checksum": checksum,
     }
 
-# as
-
-def compute_checksum(header_no_crc, payload):
-    return zlib.crc32(header_no_crc + payload) & 0xFFFFFFFF
-
-
-def build_packet(seq_num=0, ack_num=0, flags=FLAG_DATA, window=32, payload=b""):
-    payload = bytes(payload)
-    length = len(payload)
-    header_no_crc = struct.pack(HEADER_FMT, MAGIC, seq_num, ack_num, flags, window, length, 0)
-    checksum = compute_checksum(header_no_crc, payload)
-    header = struct.pack(HEADER_FMT, MAGIC, seq_num, ack_num, flags, window, length, checksum)
-    return header + payload
-
-
-def parse_packet(data):
-    hdr = unpack_header(data)
-    payload = data[HEADER_SIZE:HEADER_SIZE + hdr["length"]]
-    checksum_field = hdr["checksum"]
-
-    header_no_crc = struct.pack(HEADER_FMT, MAGIC, hdr["seq_num"], hdr["ack_num"], hdr["flags"], hdr["window"], hdr["length"], 0)
-    expected_crc = compute_checksum(header_no_crc, payload)
-    if checksum_field != expected_crc:
-        raise ValueError(f"CRC mismatch: packet corrupted")
-    hdr["payload"] = payload
-    return hdr
-
-
-def has_flag(flags, flag):
-    return (flags & flag) != 0
 
 def compute_checksum(header_no_crc, payload):
     return zlib.crc32(header_no_crc + payload) & 0xFFFFFFFF

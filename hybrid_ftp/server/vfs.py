@@ -3,6 +3,7 @@ import stat
 import time
 from pathlib import Path
 
+
 FILE_MODE_MAP = {
     stat.S_IFDIR: "d",
     stat.S_IFREG: "-",
@@ -16,6 +17,7 @@ PERM_BITS = [
     stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP,
     stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH,
 ]
+
 
 def format_mode(mode):
     type_char = FILE_MODE_MAP.get(stat.S_IFMT(mode), "?")
@@ -46,6 +48,7 @@ def list_dir(abs_path):
             entries.append(f"?????????? 1 owner ????????? ???? {name}")
     return entries
 
+
 def list_names(abs_path):
     try:
         return sorted(os.listdir(abs_path))
@@ -72,6 +75,7 @@ def rename(abs_from, abs_to):
     os.rename(abs_from, abs_to)
     return True
 
+
 def file_size(abs_path):
     return os.path.getsize(abs_path)
 
@@ -90,6 +94,7 @@ def is_dir(abs_path):
 
 def is_file(abs_path):
     return os.path.isfile(abs_path)
+
 
 def generate_unique_path(abs_dir):
     import random
