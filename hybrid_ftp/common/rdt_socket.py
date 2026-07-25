@@ -91,8 +91,129 @@ class ReliableUDPSocket:
         return receiver.recv_all()
 
 
-class _Sender():
-    pass
+class _Sender:
+    def __init__(self, sock, addr):
+        self.sock = sock
+        self.addr = addr
+        self.base = 1
+        self.next_seq = 1
+        self.cwnd = INITIAL_CWND
+        self.ssthresh = MAX_WINDOW * 2
+        self.peer_window = MAX_WINDOW
+        self.buffer = {}
+        self.estimated_rtt = INITIAL_RTO_MS / 1000.0
+        self.dev_rtt = 0.0
+        self.closed = False
+
+    @property
+    def window(self):
+        return max(1, min(int(self.cwnd), self.peer_window))
+
+    def _update_rto(self, sample_rtt):
+        self.estimated_rtt = 0.875 * self.estimated_rtt + 0.125 * sample_rtt
+        self.dev_rtt = 0.75 * self.dev_rtt + 0.25 * abs(sample_rtt - self.estimated_rtt)
+        rto = self.estimated_rtt + 4 * self.dev_rtt
+        return max(MIN_RTO_MS / 1000.0, min(rto, MAX_RTO_MS / 1000.0))
+
+    def send_all(self, data_iterable):
+        self.sock.settimeout(0.1)
+        iterator = iter(data_iterable)
+        eof = False
+        idle_deadline = time.time() + TRANSFER_IDLE_TIMEOUT_S
+
+        while True:
+            if time.time() > idle_deadline and self.buffer:
+                raise TimeoutError("Send timed out: no ACK progress")
+
+            while self.next_seq < self.base + self.window and not eof:
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    eof = True
+                    break
+                self._send_packet(self.next_seq, chunk)
+                self.next_seq += 1
+
+            before = len(self.buffer)
+            self._recv_acks()
+            if len(self.buffer) < before:
+                idle_deadline = time.time() + TRANSFER_IDLE_TIMEOUT_S
+
+            self._check_timers()
+
+            if eof and self.base >= self.next_seq:
+                return self._finish()
+
+    def _send_packet(self, seq, chunk):
+        chunk = bytes(chunk)
+        pkt = build_packet(seq_num=seq, flags=FLAG_DATA, window=MAX_WINDOW, payload=chunk)
+        self.sock.sendto(pkt, self.addr)
+        self.buffer[seq] = [chunk, time.time(), INITIAL_RTO_MS / 1000.0, 0]
+
+    def _recv_acks(self):
+        while True:
+            try:
+                data, _ = self.sock.recvfrom(4096)
+            except socket.timeout:
+                return
+            try:
+                hdr = parse_packet(data)
+            except ValueError:
+                continue
+            if has_flag(hdr["flags"], FLAG_ACK):
+                self._process_ack(hdr)
+
+    def _process_ack(self, hdr):
+        ack_num = hdr["ack_num"]
+        if ack_num not in self.buffer:
+            return
+        sample_rtt = time.time() - self.buffer[ack_num][1]
+        self._update_rto(sample_rtt)
+        del self.buffer[ack_num]
+        while self.base not in self.buffer and self.base < self.next_seq:
+            self.base += 1
+        self.peer_window = hdr["window"]
+        if self.cwnd < self.ssthresh:
+            self.cwnd += 1
+        else:
+            self.cwnd += 1.0 / self.cwnd
+        self.cwnd = min(self.cwnd, MAX_WINDOW)
+
+    def _check_timers(self):
+        now = time.time()
+        to_retransmit = []
+        for seq, info in list(self.buffer.items()):
+            _, send_time, rto, retries = info
+            if now - send_time >= rto:
+                to_retransmit.append((seq, rto, retries))
+        for seq, old_rto, retries in to_retransmit:
+            chunk, _, _, _ = self.buffer[seq]
+            pkt = build_packet(seq_num=seq, flags=FLAG_DATA, window=MAX_WINDOW, payload=chunk)
+            self.sock.sendto(pkt, self.addr)
+            new_rto = min(old_rto * 2, MAX_RTO_MS / 1000.0)
+            self.buffer[seq] = [chunk, time.time(), new_rto, retries + 1]
+            self.ssthresh = max(int(self.cwnd) // 2, 2)
+            self.cwnd = INITIAL_CWND
+
+    def _finish(self):
+        fin = build_packet(seq_num=0, flags=FLAG_FIN, window=MAX_WINDOW)
+        self.sock.sendto(fin, self.addr)
+        self.sock.settimeout(2.0)
+        deadline = time.time() + HANDSHAKE_TIMEOUT_S
+        while time.time() < deadline:
+            try:
+                data, _ = self.sock.recvfrom(4096)
+                hdr = parse_packet(data)
+                if has_flag(hdr["flags"], FLAG_FIN) and has_flag(hdr["flags"], FLAG_ACK):
+                    self.closed = True
+                    return True
+            except (socket.timeout, ValueError):
+                if time.time() < deadline:
+                    self.sock.sendto(fin, self.addr)
+                    self.sock.settimeout(2.0)
+        self.closed = True
+        return True
+
 
 
 class _Receiver():
